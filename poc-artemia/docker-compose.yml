@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: artemia-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: poc_user
+      POSTGRES_PASSWORD: poc_password
+      POSTGRES_DB: poc_artemia
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc_user -d poc_artemia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - artemia-net
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: artemia-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://poc_user:poc_password@db:5432/poc_artemia"
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - artemia-net
+
+  frontend:
+    image: nginx:1.25-alpine
+    container_name: artemia-frontend
+    restart: unless-stopped
+    volumes:
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - artemia-net
+
+volumes:
+  pgdata:
+    driver: local
+
+networks:
+  artemia-net:
+    driver: bridge
