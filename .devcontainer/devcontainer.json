@@ -1,0 +1,9 @@
+{
+  "name": "Rex Artemia",
+  "postStartCommand": "bash start.sh",
+  "forwardPorts": [3000, 3001],
+  "portsAttributes": {
+    "3000": { "visibility": "private" },
+    "3001": { "visibility": "public" }
+  }
+}
