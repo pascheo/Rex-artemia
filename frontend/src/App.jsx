@@ -2,6 +2,8 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import FormulairePage from './pages/FormulairePage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
+import LoginPage from './pages/LoginPage.jsx';
+import ProtectedRoute from './components/ProtectedRoute.jsx';
 
 const styles = {
   entete: {
@@ -54,7 +56,8 @@ export default function App() {
       <main style={styles.contenu}>
         <Routes>
           <Route path="/" element={<FormulairePage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         </Routes>
       </main>
     </BrowserRouter>

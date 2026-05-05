@@ -2,13 +2,39 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'changeme';
+const DSI_PASSWORD_HASH = process.env.DSI_PASSWORD_HASH || '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi';
+const JWT_SECRET = process.env.JWT_SECRET || 'changeme-jwt-secret';
 
 app.use(cors());
 app.use(express.json());
+
+// Middleware de vérification du token JWT
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ erreur: 'Authentification requise.' });
+  try {
+    jwt.verify(token, JWT_SECRET);
+    next();
+  } catch {
+    return res.status(401).json({ erreur: 'Token invalide ou expiré.' });
+  }
+}
+
+// POST /api/auth/login — Authentification DSI
+app.post('/api/auth/login', async (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ erreur: 'Mot de passe manquant.' });
+  const correct = await bcrypt.compare(password, DSI_PASSWORD_HASH);
+  if (!correct) return res.status(401).json({ erreur: 'Mot de passe incorrect.' });
+  const token = jwt.sign({ role: 'dsi' }, JWT_SECRET, { expiresIn: '8h' });
+  return res.json({ token });
+});
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -106,7 +132,7 @@ app.post('/api/reponses', async (req, res) => {
 });
 
 // GET /api/reponses — Liste toutes les réponses (filtrage optionnel par direction)
-app.get('/api/reponses', async (req, res) => {
+app.get('/api/reponses', authenticateToken, async (req, res) => {
   const { direction } = req.query;
   let requete = 'SELECT * FROM reponses';
   const params = [];
@@ -128,7 +154,7 @@ app.get('/api/reponses', async (req, res) => {
 });
 
 // GET /api/reponses/consolidation — Moyennes par axe pour chaque répondant
-app.get('/api/reponses/consolidation', async (req, res) => {
+app.get('/api/reponses/consolidation', authenticateToken, async (req, res) => {
   // Colonnes par section pour le calcul des moyennes en SQL
   const colonnesParAxe = {
     A: ['a1_adequation_cu1','a1_adequation_cu2','a1_adequation_cu3','a1_adequation_cu4','a1_adequation_cu5',
@@ -262,7 +288,7 @@ app.get('/api/reponses/consolidation', async (req, res) => {
 });
 
 // GET /api/reponses/export.csv — Export CSV complet
-app.get('/api/reponses/export.csv', async (req, res) => {
+app.get('/api/reponses/export.csv', authenticateToken, async (req, res) => {
   try {
     const resultat = await pool.query('SELECT * FROM reponses ORDER BY created_at DESC');
 
@@ -295,13 +321,8 @@ app.get('/api/reponses/export.csv', async (req, res) => {
   }
 });
 
-// DELETE /api/reponses/:id — Suppression protégée par token admin
-app.delete('/api/reponses/:id', async (req, res) => {
-  const tokenFourni = req.headers['x-admin-token'];
-  if (tokenFourni !== ADMIN_TOKEN) {
-    return res.status(403).json({ erreur: 'Token administrateur invalide.' });
-  }
-
+// DELETE /api/reponses/:id — Suppression protégée par JWT
+app.delete('/api/reponses/:id', authenticateToken, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) {
     return res.status(400).json({ erreur: 'Identifiant invalide.' });

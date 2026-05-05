@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 const NOMS_AXES = { moy_a: 'A — Pertinence', moy_b: 'B — UX', moy_c: 'C — Qualité', moy_d: 'D — Avancé', moy_e: 'E — Sécurité', moy_f: 'F — Intégration' };
 const AXES = ['moy_a', 'moy_b', 'moy_c', 'moy_d', 'moy_e', 'moy_f'];
+
+function getToken() {
+  return sessionStorage.getItem('dsi_token');
+}
+
+function headersAuth() {
+  return { 'Authorization': `Bearer ${getToken()}` };
+}
 
 function couleurNote(note) {
   if (note === null || note === undefined) return '#cccccc';
@@ -54,7 +63,9 @@ function KPI({ titre, valeur, unite }) {
 
 const styles = {
   page: { maxWidth: '1400px', margin: '0 auto', padding: '32px 16px' },
-  titre: { color: '#003189', marginBottom: '24px' },
+  entete: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' },
+  titre: { color: '#003189', margin: 0 },
+  boutonDeconnexion: { backgroundColor: 'transparent', color: '#003189', border: '1px solid #003189', padding: '8px 16px', fontSize: '0.85rem', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 },
   grillKpi: { display: 'flex', gap: '16px', flexWrap: 'wrap', marginBottom: '32px' },
   section: { backgroundColor: '#ffffff', borderRadius: '8px', marginBottom: '24px', boxShadow: '0 1px 4px rgba(0,0,0,0.1)', overflow: 'hidden' },
   sectionEntete: { backgroundColor: '#003189', color: '#ffffff', padding: '14px 20px', fontSize: '1rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
@@ -76,7 +87,7 @@ const styles = {
 
 const VERBATIM_LABELS = [
   { cle: 'g1_points_convaincants', label: 'Points convaincants' },
-  { cle: 'g2_obstacles_adoption', label: 'Obstacles à l\'adoption' },
+  { cle: 'g2_obstacles_adoption', label: "Obstacles à l'adoption" },
   { cle: 'g3_erreurs_hallucinations', label: 'Erreurs / hallucinations' },
   { cle: 'g4_recommandation_deploiement', label: 'Recommandation déploiement' },
   { cle: 'g5_autres_remarques', label: 'Autres remarques' },
@@ -87,15 +98,23 @@ export default function DashboardPage() {
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState(null);
   const [accordeonOuverts, setAccordeonOuverts] = useState({});
-  const [tokenModal, setTokenModal] = useState('');
   const [idASupprimer, setIdASupprimer] = useState(null);
   const [suppressionErreur, setSuppressionErreur] = useState('');
+  const navigate = useNavigate();
+
+  function deconnecter() {
+    sessionStorage.removeItem('dsi_token');
+    navigate('/login');
+  }
 
   const chargerDonnees = useCallback(async () => {
     setChargement(true);
     setErreur(null);
     try {
-      const reponse = await fetch(`${API_URL}/api/reponses/consolidation`);
+      const reponse = await fetch(`${API_URL}/api/reponses/consolidation`, {
+        headers: headersAuth(),
+      });
+      if (reponse.status === 401) { deconnecter(); return; }
       if (!reponse.ok) throw new Error('Erreur lors du chargement des données.');
       const json = await reponse.json();
       setDonnees(json);
@@ -113,25 +132,36 @@ export default function DashboardPage() {
   }
 
   function telechargerCSV() {
-    window.location.href = `${API_URL}/api/reponses/export.csv`;
+    const token = getToken();
+    // Fetch avec auth puis déclenchement du téléchargement via blob
+    fetch(`${API_URL}/api/reponses/export.csv`, { headers: headersAuth() })
+      .then((r) => {
+        if (r.status === 401) { deconnecter(); return null; }
+        return r.blob();
+      })
+      .then((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'export-artemia.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+      });
   }
 
   function demanderSuppression(id) {
     setIdASupprimer(id);
-    setTokenModal('');
     setSuppressionErreur('');
   }
 
   async function confirmerSuppression() {
-    if (!tokenModal) {
-      setSuppressionErreur('Veuillez saisir le token administrateur.');
-      return;
-    }
     try {
       const reponse = await fetch(`${API_URL}/api/reponses/${idASupprimer}`, {
         method: 'DELETE',
-        headers: { 'x-admin-token': tokenModal },
+        headers: headersAuth(),
       });
+      if (reponse.status === 401) { deconnecter(); return; }
       const json = await reponse.json();
       if (reponse.ok) {
         setIdASupprimer(null);
@@ -153,7 +183,6 @@ export default function DashboardPage() {
     ? Math.round(donnees.reduce((s, r) => s + (parseFloat(r.moy_c) || 0), 0) / nbRepondants * 10) / 10
     : null;
 
-  // Meilleur axe (parmi ceux avec des données)
   let meilleurAxe = null;
   if (nbRepondants > 0) {
     let maxVal = -1;
@@ -168,12 +197,15 @@ export default function DashboardPage() {
 
   return (
     <div style={styles.page}>
-      <h2 style={styles.titre}>Tableau de bord DSI — POC MIA Artemia</h2>
+      <div style={styles.entete}>
+        <h2 style={styles.titre}>Tableau de bord DSI — POC MIA Artemia</h2>
+        <button style={styles.boutonDeconnexion} onClick={deconnecter}>Deconnexion</button>
+      </div>
 
       {/* KPIs */}
       <div style={styles.grillKpi}>
-        <KPI titre="Répondants" valeur={nbRepondants} />
-        <KPI titre="Note qualité moyenne (section C)" valeur={moyenneC !== null ? moyenneC.toFixed(1) : null} unite="sur 4" />
+        <KPI titre="Repondants" valeur={nbRepondants} />
+        <KPI titre="Note qualite moyenne (section C)" valeur={moyenneC !== null ? moyenneC.toFixed(1) : null} unite="sur 4" />
         <KPI titre="Moyenne globale" valeur={moyenneGlobale !== null ? moyenneGlobale.toFixed(1) : null} unite="sur 4" />
         <KPI titre="Meilleur axe" valeur={meilleurAxe ?? '—'} />
       </div>
@@ -181,13 +213,13 @@ export default function DashboardPage() {
       {/* Tableau de consolidation */}
       <div style={styles.section}>
         <div style={styles.sectionEntete}>
-          <span>Consolidation par répondant</span>
+          <span>Consolidation par repondant</span>
           <button style={styles.boutonExport} onClick={telechargerCSV}>
             Exporter CSV
           </button>
         </div>
         {nbRepondants === 0 ? (
-          <p style={{ padding: '20px', color: '#555' }}>Aucune réponse enregistrée pour le moment.</p>
+          <p style={{ padding: '20px', color: '#555' }}>Aucune reponse enregistree pour le moment.</p>
         ) : (
           <div style={styles.tableauWrapper}>
             <table style={styles.tableau}>
@@ -231,10 +263,10 @@ export default function DashboardPage() {
       {/* Verbatim */}
       <div style={styles.section}>
         <div style={styles.sectionEntete}>
-          <span>Verbatim par répondant</span>
+          <span>Verbatim par repondant</span>
         </div>
         {nbRepondants === 0 ? (
-          <p style={{ padding: '20px', color: '#555' }}>Aucune réponse disponible.</p>
+          <p style={{ padding: '20px', color: '#555' }}>Aucune reponse disponible.</p>
         ) : (
           donnees.map((r) => (
             <div key={r.id}>
@@ -257,7 +289,7 @@ export default function DashboardPage() {
                       {r[cle] ? (
                         <div style={styles.verbatimReponse}>{r[cle]}</div>
                       ) : (
-                        <div style={{ ...styles.vide, marginBottom: '16px' }}>Non renseigné</div>
+                        <div style={{ ...styles.vide, marginBottom: '16px' }}>Non renseigne</div>
                       )}
                     </div>
                   ))}
@@ -268,7 +300,7 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Modal de suppression */}
+      {/* Modal de confirmation de suppression */}
       {idASupprimer !== null && (
         <div style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -277,16 +309,8 @@ export default function DashboardPage() {
           <div style={{ backgroundColor: '#fff', borderRadius: '8px', padding: '32px', maxWidth: '420px', width: '90%', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
             <h3 style={{ margin: '0 0 16px', color: '#dc3545' }}>Confirmer la suppression</h3>
             <p style={{ color: '#555', marginBottom: '20px' }}>
-              Cette action est irréversible. Saisissez le token administrateur pour confirmer.
+              Cette action est irreversible. Etes-vous certain de vouloir supprimer cette reponse ?
             </p>
-            <input
-              type="password"
-              placeholder="Token administrateur"
-              value={tokenModal}
-              onChange={(e) => setTokenModal(e.target.value)}
-              style={{ width: '100%', padding: '10px', borderRadius: '4px', border: '1px solid #ccc', fontSize: '0.95rem', boxSizing: 'border-box', marginBottom: '12px' }}
-              onKeyDown={(e) => e.key === 'Enter' && confirmerSuppression()}
-            />
             {suppressionErreur && (
               <p style={{ color: '#dc3545', fontSize: '0.85rem', marginBottom: '12px' }}>{suppressionErreur}</p>
             )}
