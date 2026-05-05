@@ -25,7 +25,6 @@ services:
     environment:
       DATABASE_URL: postgres://artemia:artemia@postgres:5432/artemia
       PORT: 3001
-      # Remplacer la valeur ci-dessous par un token sécurisé avant déploiement
       ADMIN_TOKEN: changeme
     ports:
       - "3001:3001"
@@ -38,8 +37,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # En production, remplacer par l'adresse IP/nom du serveur
-        VITE_API_URL: http://localhost:3001
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3001}
     restart: unless-stopped
     ports:
       - "3000:80"
