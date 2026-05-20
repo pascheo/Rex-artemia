@@ -73,7 +73,7 @@ const CHAMPS_NOTES = [
   'f1_integration_outils', 'f2_potentiel_adoption', 'f3_formation_necessaire',
 ];
 
-const CUS = ['cu1', 'cu2', 'cu3', 'cu4', 'cu5'];
+const CUS = ['cu1', 'cu2'];
 
 // Génère toutes les colonnes de notes sous forme de tableau plat
 function tousLesChampsNotes() {
@@ -87,6 +87,8 @@ function tousLesChampsNotes() {
 }
 
 const CHAMPS_VERBATIM = [
+  'cu1_nom',
+  'cu2_nom',
   'g1_points_convaincants',
   'g2_obstacles_adoption',
   'g3_erreurs_hallucinations',
@@ -155,109 +157,78 @@ app.get('/api/reponses', authenticateToken, async (req, res) => {
 
 // GET /api/reponses/consolidation — Moyennes par axe pour chaque répondant
 app.get('/api/reponses/consolidation', authenticateToken, async (req, res) => {
-  // Colonnes par section pour le calcul des moyennes en SQL
-  const colonnesParAxe = {
-    A: ['a1_adequation_cu1','a1_adequation_cu2','a1_adequation_cu3','a1_adequation_cu4','a1_adequation_cu5',
-        'a2_richesse_fonctionnelle_cu1','a2_richesse_fonctionnelle_cu2','a2_richesse_fonctionnelle_cu3','a2_richesse_fonctionnelle_cu4','a2_richesse_fonctionnelle_cu5',
-        'a3_valeur_ajoutee_cu1','a3_valeur_ajoutee_cu2','a3_valeur_ajoutee_cu3','a3_valeur_ajoutee_cu4','a3_valeur_ajoutee_cu5'],
-    B: ['b1_prise_en_main_cu1','b1_prise_en_main_cu2','b1_prise_en_main_cu3','b1_prise_en_main_cu4','b1_prise_en_main_cu5',
-        'b2_ergonomie_cu1','b2_ergonomie_cu2','b2_ergonomie_cu3','b2_ergonomie_cu4','b2_ergonomie_cu5',
-        'b3_rapidite_cu1','b3_rapidite_cu2','b3_rapidite_cu3','b3_rapidite_cu4','b3_rapidite_cu5'],
-    C: ['c1_precision_cu1','c1_precision_cu2','c1_precision_cu3','c1_precision_cu4','c1_precision_cu5',
-        'c2_pertinence_suggestions_cu1','c2_pertinence_suggestions_cu2','c2_pertinence_suggestions_cu3','c2_pertinence_suggestions_cu4','c2_pertinence_suggestions_cu5',
-        'c3_gestion_cas_limites_cu1','c3_gestion_cas_limites_cu2','c3_gestion_cas_limites_cu3','c3_gestion_cas_limites_cu4','c3_gestion_cas_limites_cu5'],
-    D: ['d1_integration_fichiers_simplicite_cu1','d1_integration_fichiers_simplicite_cu2','d1_integration_fichiers_simplicite_cu3','d1_integration_fichiers_simplicite_cu4','d1_integration_fichiers_simplicite_cu5',
-        'd2_integration_fichiers_analyse_cu1','d2_integration_fichiers_analyse_cu2','d2_integration_fichiers_analyse_cu3','d2_integration_fichiers_analyse_cu4','d2_integration_fichiers_analyse_cu5',
-        'd3_integration_fichiers_limites_cu1','d3_integration_fichiers_limites_cu2','d3_integration_fichiers_limites_cu3','d3_integration_fichiers_limites_cu4','d3_integration_fichiers_limites_cu5',
-        'd4_assistants_configuration_cu1','d4_assistants_configuration_cu2','d4_assistants_configuration_cu3','d4_assistants_configuration_cu4','d4_assistants_configuration_cu5',
-        'd5_assistants_partage_cu1','d5_assistants_partage_cu2','d5_assistants_partage_cu3','d5_assistants_partage_cu4','d5_assistants_partage_cu5',
-        'd6_assistants_coherence_cu1','d6_assistants_coherence_cu2','d6_assistants_coherence_cu3','d6_assistants_coherence_cu4','d6_assistants_coherence_cu5'],
-    E: ['e1_confidentialite_cu1','e1_confidentialite_cu2','e1_confidentialite_cu3','e1_confidentialite_cu4','e1_confidentialite_cu5',
-        'e2_conformite_rgpd_cu1','e2_conformite_rgpd_cu2','e2_conformite_rgpd_cu3','e2_conformite_rgpd_cu4','e2_conformite_rgpd_cu5'],
-    F: ['f1_integration_outils_cu1','f1_integration_outils_cu2','f1_integration_outils_cu3','f1_integration_outils_cu4','f1_integration_outils_cu5',
-        'f2_potentiel_adoption_cu1','f2_potentiel_adoption_cu2','f2_potentiel_adoption_cu3','f2_potentiel_adoption_cu4','f2_potentiel_adoption_cu5',
-        'f3_formation_necessaire_cu1','f3_formation_necessaire_cu2','f3_formation_necessaire_cu3','f3_formation_necessaire_cu4','f3_formation_necessaire_cu5'],
-  };
-
-  // Construction des expressions SQL pour chaque axe (ignore les NULL)
-  const expressionsAxes = Object.entries(colonnesParAxe).map(([axe, cols]) => {
-    const nullifs = cols.map((c) => `NULLIF(${c}, 0)`).join(', ');
-    // AVG ignore automatiquement les NULL en PostgreSQL
-    return `ROUND(AVG(CASE WHEN (${cols.join(' + ')}) IS NOT NULL THEN (${cols.map(c => `COALESCE(${c}, NULL)`).join(' + ')}) END)::NUMERIC, 1) AS moy_${axe.toLowerCase()}`;
-  });
-
-  // Calcul de la moyenne globale sur toutes les colonnes renseignées
-  const tousChamps = Object.values(colonnesParAxe).flat();
-  const moyGlobaleSQL = `ROUND((
-    SELECT AVG(v) FROM (
-      SELECT unnest(ARRAY[${tousChamps.map(c => `CAST(${c} AS NUMERIC)`).join(',')}]) AS v
-    ) sub WHERE v IS NOT NULL
-  ), 1) AS moy_globale`;
-
-  // Requête finale avec calcul des moyennes par axe via SQL brut
   const requete = `
     SELECT
       id,
       direction,
       nom_prenom,
       created_at,
-      ROUND(
-        (COALESCE(a1_adequation_cu1,0) + COALESCE(a1_adequation_cu2,0) + COALESCE(a1_adequation_cu3,0) + COALESCE(a1_adequation_cu4,0) + COALESCE(a1_adequation_cu5,0) +
-         COALESCE(a2_richesse_fonctionnelle_cu1,0) + COALESCE(a2_richesse_fonctionnelle_cu2,0) + COALESCE(a2_richesse_fonctionnelle_cu3,0) + COALESCE(a2_richesse_fonctionnelle_cu4,0) + COALESCE(a2_richesse_fonctionnelle_cu5,0) +
-         COALESCE(a3_valeur_ajoutee_cu1,0) + COALESCE(a3_valeur_ajoutee_cu2,0) + COALESCE(a3_valeur_ajoutee_cu3,0) + COALESCE(a3_valeur_ajoutee_cu4,0) + COALESCE(a3_valeur_ajoutee_cu5,0))::NUMERIC /
-        NULLIF((CASE WHEN a1_adequation_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a1_adequation_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a1_adequation_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a1_adequation_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a1_adequation_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN a2_richesse_fonctionnelle_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a2_richesse_fonctionnelle_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a2_richesse_fonctionnelle_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a2_richesse_fonctionnelle_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a2_richesse_fonctionnelle_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN a3_valeur_ajoutee_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a3_valeur_ajoutee_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a3_valeur_ajoutee_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a3_valeur_ajoutee_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a3_valeur_ajoutee_cu5 IS NOT NULL THEN 1 ELSE 0 END), 0),
-      1) AS moy_a,
+      cu1_nom,
+      cu2_nom,
 
       ROUND(
-        (COALESCE(b1_prise_en_main_cu1,0) + COALESCE(b1_prise_en_main_cu2,0) + COALESCE(b1_prise_en_main_cu3,0) + COALESCE(b1_prise_en_main_cu4,0) + COALESCE(b1_prise_en_main_cu5,0) +
-         COALESCE(b2_ergonomie_cu1,0) + COALESCE(b2_ergonomie_cu2,0) + COALESCE(b2_ergonomie_cu3,0) + COALESCE(b2_ergonomie_cu4,0) + COALESCE(b2_ergonomie_cu5,0) +
-         COALESCE(b3_rapidite_cu1,0) + COALESCE(b3_rapidite_cu2,0) + COALESCE(b3_rapidite_cu3,0) + COALESCE(b3_rapidite_cu4,0) + COALESCE(b3_rapidite_cu5,0))::NUMERIC /
-        NULLIF((CASE WHEN b1_prise_en_main_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b1_prise_en_main_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b1_prise_en_main_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b1_prise_en_main_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b1_prise_en_main_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN b2_ergonomie_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b2_ergonomie_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b2_ergonomie_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b2_ergonomie_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b2_ergonomie_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN b3_rapidite_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b3_rapidite_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b3_rapidite_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b3_rapidite_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b3_rapidite_cu5 IS NOT NULL THEN 1 ELSE 0 END), 0),
-      1) AS moy_b,
+        (COALESCE(a1_adequation_cu1,0) + COALESCE(a1_adequation_cu2,0) +
+         COALESCE(a2_richesse_fonctionnelle_cu1,0) + COALESCE(a2_richesse_fonctionnelle_cu2,0) +
+         COALESCE(a3_valeur_ajoutee_cu1,0) + COALESCE(a3_valeur_ajoutee_cu2,0))::NUMERIC /
+        NULLIF((
+          CASE WHEN a1_adequation_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a1_adequation_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN a2_richesse_fonctionnelle_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a2_richesse_fonctionnelle_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN a3_valeur_ajoutee_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN a3_valeur_ajoutee_cu2 IS NOT NULL THEN 1 ELSE 0 END
+        ), 0), 1) AS moy_a,
 
       ROUND(
-        (COALESCE(c1_precision_cu1,0) + COALESCE(c1_precision_cu2,0) + COALESCE(c1_precision_cu3,0) + COALESCE(c1_precision_cu4,0) + COALESCE(c1_precision_cu5,0) +
-         COALESCE(c2_pertinence_suggestions_cu1,0) + COALESCE(c2_pertinence_suggestions_cu2,0) + COALESCE(c2_pertinence_suggestions_cu3,0) + COALESCE(c2_pertinence_suggestions_cu4,0) + COALESCE(c2_pertinence_suggestions_cu5,0) +
-         COALESCE(c3_gestion_cas_limites_cu1,0) + COALESCE(c3_gestion_cas_limites_cu2,0) + COALESCE(c3_gestion_cas_limites_cu3,0) + COALESCE(c3_gestion_cas_limites_cu4,0) + COALESCE(c3_gestion_cas_limites_cu5,0))::NUMERIC /
-        NULLIF((CASE WHEN c1_precision_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c1_precision_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c1_precision_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c1_precision_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c1_precision_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN c2_pertinence_suggestions_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c2_pertinence_suggestions_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c2_pertinence_suggestions_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c2_pertinence_suggestions_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c2_pertinence_suggestions_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN c3_gestion_cas_limites_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c3_gestion_cas_limites_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c3_gestion_cas_limites_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c3_gestion_cas_limites_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c3_gestion_cas_limites_cu5 IS NOT NULL THEN 1 ELSE 0 END), 0),
-      1) AS moy_c,
+        (COALESCE(b1_prise_en_main_cu1,0) + COALESCE(b1_prise_en_main_cu2,0) +
+         COALESCE(b2_ergonomie_cu1,0) + COALESCE(b2_ergonomie_cu2,0) +
+         COALESCE(b3_rapidite_cu1,0) + COALESCE(b3_rapidite_cu2,0))::NUMERIC /
+        NULLIF((
+          CASE WHEN b1_prise_en_main_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b1_prise_en_main_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN b2_ergonomie_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b2_ergonomie_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN b3_rapidite_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN b3_rapidite_cu2 IS NOT NULL THEN 1 ELSE 0 END
+        ), 0), 1) AS moy_b,
 
       ROUND(
-        (COALESCE(d1_integration_fichiers_simplicite_cu1,0) + COALESCE(d1_integration_fichiers_simplicite_cu2,0) + COALESCE(d1_integration_fichiers_simplicite_cu3,0) + COALESCE(d1_integration_fichiers_simplicite_cu4,0) + COALESCE(d1_integration_fichiers_simplicite_cu5,0) +
-         COALESCE(d2_integration_fichiers_analyse_cu1,0) + COALESCE(d2_integration_fichiers_analyse_cu2,0) + COALESCE(d2_integration_fichiers_analyse_cu3,0) + COALESCE(d2_integration_fichiers_analyse_cu4,0) + COALESCE(d2_integration_fichiers_analyse_cu5,0) +
-         COALESCE(d3_integration_fichiers_limites_cu1,0) + COALESCE(d3_integration_fichiers_limites_cu2,0) + COALESCE(d3_integration_fichiers_limites_cu3,0) + COALESCE(d3_integration_fichiers_limites_cu4,0) + COALESCE(d3_integration_fichiers_limites_cu5,0) +
-         COALESCE(d4_assistants_configuration_cu1,0) + COALESCE(d4_assistants_configuration_cu2,0) + COALESCE(d4_assistants_configuration_cu3,0) + COALESCE(d4_assistants_configuration_cu4,0) + COALESCE(d4_assistants_configuration_cu5,0) +
-         COALESCE(d5_assistants_partage_cu1,0) + COALESCE(d5_assistants_partage_cu2,0) + COALESCE(d5_assistants_partage_cu3,0) + COALESCE(d5_assistants_partage_cu4,0) + COALESCE(d5_assistants_partage_cu5,0) +
-         COALESCE(d6_assistants_coherence_cu1,0) + COALESCE(d6_assistants_coherence_cu2,0) + COALESCE(d6_assistants_coherence_cu3,0) + COALESCE(d6_assistants_coherence_cu4,0) + COALESCE(d6_assistants_coherence_cu5,0))::NUMERIC /
-        NULLIF((CASE WHEN d1_integration_fichiers_simplicite_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d1_integration_fichiers_simplicite_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d1_integration_fichiers_simplicite_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d1_integration_fichiers_simplicite_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d1_integration_fichiers_simplicite_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN d2_integration_fichiers_analyse_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d2_integration_fichiers_analyse_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d2_integration_fichiers_analyse_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d2_integration_fichiers_analyse_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d2_integration_fichiers_analyse_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN d3_integration_fichiers_limites_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d3_integration_fichiers_limites_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d3_integration_fichiers_limites_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d3_integration_fichiers_limites_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d3_integration_fichiers_limites_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN d4_assistants_configuration_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d4_assistants_configuration_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d4_assistants_configuration_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d4_assistants_configuration_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d4_assistants_configuration_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN d5_assistants_partage_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d5_assistants_partage_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d5_assistants_partage_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d5_assistants_partage_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d5_assistants_partage_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN d6_assistants_coherence_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d6_assistants_coherence_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d6_assistants_coherence_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d6_assistants_coherence_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d6_assistants_coherence_cu5 IS NOT NULL THEN 1 ELSE 0 END), 0),
-      1) AS moy_d,
+        (COALESCE(c1_precision_cu1,0) + COALESCE(c1_precision_cu2,0) +
+         COALESCE(c2_pertinence_suggestions_cu1,0) + COALESCE(c2_pertinence_suggestions_cu2,0) +
+         COALESCE(c3_gestion_cas_limites_cu1,0) + COALESCE(c3_gestion_cas_limites_cu2,0))::NUMERIC /
+        NULLIF((
+          CASE WHEN c1_precision_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c1_precision_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN c2_pertinence_suggestions_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c2_pertinence_suggestions_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN c3_gestion_cas_limites_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN c3_gestion_cas_limites_cu2 IS NOT NULL THEN 1 ELSE 0 END
+        ), 0), 1) AS moy_c,
 
       ROUND(
-        (COALESCE(e1_confidentialite_cu1,0) + COALESCE(e1_confidentialite_cu2,0) + COALESCE(e1_confidentialite_cu3,0) + COALESCE(e1_confidentialite_cu4,0) + COALESCE(e1_confidentialite_cu5,0) +
-         COALESCE(e2_conformite_rgpd_cu1,0) + COALESCE(e2_conformite_rgpd_cu2,0) + COALESCE(e2_conformite_rgpd_cu3,0) + COALESCE(e2_conformite_rgpd_cu4,0) + COALESCE(e2_conformite_rgpd_cu5,0))::NUMERIC /
-        NULLIF((CASE WHEN e1_confidentialite_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e1_confidentialite_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e1_confidentialite_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e1_confidentialite_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e1_confidentialite_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN e2_conformite_rgpd_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e2_conformite_rgpd_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e2_conformite_rgpd_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e2_conformite_rgpd_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e2_conformite_rgpd_cu5 IS NOT NULL THEN 1 ELSE 0 END), 0),
-      1) AS moy_e,
+        (COALESCE(d1_integration_fichiers_simplicite_cu1,0) + COALESCE(d1_integration_fichiers_simplicite_cu2,0) +
+         COALESCE(d2_integration_fichiers_analyse_cu1,0) + COALESCE(d2_integration_fichiers_analyse_cu2,0) +
+         COALESCE(d3_integration_fichiers_limites_cu1,0) + COALESCE(d3_integration_fichiers_limites_cu2,0) +
+         COALESCE(d4_assistants_configuration_cu1,0) + COALESCE(d4_assistants_configuration_cu2,0) +
+         COALESCE(d5_assistants_partage_cu1,0) + COALESCE(d5_assistants_partage_cu2,0) +
+         COALESCE(d6_assistants_coherence_cu1,0) + COALESCE(d6_assistants_coherence_cu2,0))::NUMERIC /
+        NULLIF((
+          CASE WHEN d1_integration_fichiers_simplicite_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d1_integration_fichiers_simplicite_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN d2_integration_fichiers_analyse_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d2_integration_fichiers_analyse_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN d3_integration_fichiers_limites_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d3_integration_fichiers_limites_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN d4_assistants_configuration_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d4_assistants_configuration_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN d5_assistants_partage_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d5_assistants_partage_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN d6_assistants_coherence_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN d6_assistants_coherence_cu2 IS NOT NULL THEN 1 ELSE 0 END
+        ), 0), 1) AS moy_d,
 
       ROUND(
-        (COALESCE(f1_integration_outils_cu1,0) + COALESCE(f1_integration_outils_cu2,0) + COALESCE(f1_integration_outils_cu3,0) + COALESCE(f1_integration_outils_cu4,0) + COALESCE(f1_integration_outils_cu5,0) +
-         COALESCE(f2_potentiel_adoption_cu1,0) + COALESCE(f2_potentiel_adoption_cu2,0) + COALESCE(f2_potentiel_adoption_cu3,0) + COALESCE(f2_potentiel_adoption_cu4,0) + COALESCE(f2_potentiel_adoption_cu5,0) +
-         COALESCE(f3_formation_necessaire_cu1,0) + COALESCE(f3_formation_necessaire_cu2,0) + COALESCE(f3_formation_necessaire_cu3,0) + COALESCE(f3_formation_necessaire_cu4,0) + COALESCE(f3_formation_necessaire_cu5,0))::NUMERIC /
-        NULLIF((CASE WHEN f1_integration_outils_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f1_integration_outils_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f1_integration_outils_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f1_integration_outils_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f1_integration_outils_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN f2_potentiel_adoption_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f2_potentiel_adoption_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f2_potentiel_adoption_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f2_potentiel_adoption_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f2_potentiel_adoption_cu5 IS NOT NULL THEN 1 ELSE 0 END +
-         CASE WHEN f3_formation_necessaire_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f3_formation_necessaire_cu2 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f3_formation_necessaire_cu3 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f3_formation_necessaire_cu4 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f3_formation_necessaire_cu5 IS NOT NULL THEN 1 ELSE 0 END), 0),
-      1) AS moy_f,
+        (COALESCE(e1_confidentialite_cu1,0) + COALESCE(e1_confidentialite_cu2,0) +
+         COALESCE(e2_conformite_rgpd_cu1,0) + COALESCE(e2_conformite_rgpd_cu2,0))::NUMERIC /
+        NULLIF((
+          CASE WHEN e1_confidentialite_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e1_confidentialite_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN e2_conformite_rgpd_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN e2_conformite_rgpd_cu2 IS NOT NULL THEN 1 ELSE 0 END
+        ), 0), 1) AS moy_e,
+
+      ROUND(
+        (COALESCE(f1_integration_outils_cu1,0) + COALESCE(f1_integration_outils_cu2,0) +
+         COALESCE(f2_potentiel_adoption_cu1,0) + COALESCE(f2_potentiel_adoption_cu2,0) +
+         COALESCE(f3_formation_necessaire_cu1,0) + COALESCE(f3_formation_necessaire_cu2,0))::NUMERIC /
+        NULLIF((
+          CASE WHEN f1_integration_outils_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f1_integration_outils_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN f2_potentiel_adoption_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f2_potentiel_adoption_cu2 IS NOT NULL THEN 1 ELSE 0 END +
+          CASE WHEN f3_formation_necessaire_cu1 IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN f3_formation_necessaire_cu2 IS NOT NULL THEN 1 ELSE 0 END
+        ), 0), 1) AS moy_f,
 
       g1_points_convaincants,
       g2_obstacles_adoption,

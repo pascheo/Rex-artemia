@@ -93,6 +93,14 @@ const VERBATIM_LABELS = [
   { cle: 'g5_autres_remarques', label: 'Autres remarques' },
 ];
 
+function BadgeCU({ nom, numero }) {
+  return nom ? (
+    <span style={{ display: 'inline-block', backgroundColor: '#e8eef8', color: '#003189', borderRadius: '4px', padding: '2px 10px', fontSize: '0.82rem', fontWeight: 600, marginRight: '8px' }}>
+      CU{numero} — {nom}
+    </span>
+  ) : null;
+}
+
 export default function DashboardPage() {
   const [donnees, setDonnees] = useState([]);
   const [chargement, setChargement] = useState(true);
@@ -275,9 +283,11 @@ export default function DashboardPage() {
                 onClick={() => toggleAccordeon(r.id)}
                 aria-expanded={!!accordeonOuverts[r.id]}
               >
-                <span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <strong>{r.nom_prenom}</strong>
-                  <span style={{ color: '#555', marginLeft: '8px', fontSize: '0.85rem' }}>({r.direction})</span>
+                  <span style={{ color: '#555', fontSize: '0.85rem' }}>({r.direction})</span>
+                  <BadgeCU nom={r.cu1_nom} numero={1} />
+                  <BadgeCU nom={r.cu2_nom} numero={2} />
                 </span>
                 <span>{accordeonOuverts[r.id] ? '▲' : '▼'}</span>
               </button>
