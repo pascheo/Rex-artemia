@@ -54,21 +54,31 @@ rex-artemia/
 
 ## Configuration
 
-### Changer le token administrateur
+### Changer le mot de passe DSI
 
-Le token admin protège la suppression des réponses dans le tableau de bord DSI.
+Le tableau de bord DSI est protégé par un mot de passe. Pour le changer :
 
-Modifiez la valeur dans `docker-compose.yml` :
+1. Générez le hash du nouveau mot de passe :
+```bash
+cd backend
+node scripts/generate-password.js nouveaumotdepasse
+```
+
+2. Copiez le hash affiché dans le terminal.
+
+3. Remplacez la valeur de `DSI_PASSWORD_HASH` dans `docker-compose.yml` :
 ```yaml
 backend:
   environment:
-    ADMIN_TOKEN: votre-token-securise-ici
+    DSI_PASSWORD_HASH: "$2a$10$votre-hash-genere-ici"
 ```
 
-Puis redémarrez le service backend :
+4. Relancez le backend :
 ```bash
-docker compose restart backend
+docker compose up -d --build backend
 ```
+
+Le mot de passe par défaut est `changeme`. **Changez-le avant tout déploiement en production.**
 
 ### Déploiement sur un serveur interne
 
@@ -136,7 +146,9 @@ cat sauvegarde-artemia-YYYYMMDD.sql | docker compose exec -T postgres psql -U ar
 | GET | `/api/reponses/export.csv` | Export CSV complet |
 | DELETE | `/api/reponses/:id` | Supprimer une réponse (token requis) |
 
-La suppression nécessite le header `x-admin-token: <votre-token>`.
+Les routes GET et DELETE sont protégées par JWT (header `Authorization: Bearer <token>`).
+Le token est obtenu via `POST /api/auth/login` avec `{ "password": "..." }`.
+`POST /api/reponses` reste public (formulaire agent).
 
 ## Structure du questionnaire
 

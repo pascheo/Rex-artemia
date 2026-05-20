@@ -74,10 +74,10 @@ const LIBELLES_NOTES = { 1: '1 — Insuffisant', 2: '2 — Passable', 3: '3 — 
 
 // Construit l'état initial vide du formulaire
 function etatInitial() {
-  const etat = { direction: '', nom_prenom: '' };
+  const etat = { direction: '', nom_prenom: '', cu1_nom: '', cu2_nom: '' };
   for (const section of SECTIONS) {
     for (const critere of section.criteres) {
-      for (let cu = 1; cu <= 5; cu++) {
+      for (let cu = 1; cu <= 2; cu++) {
         etat[`${critere.cle}_cu${cu}`] = '';
       }
     }
@@ -146,6 +146,14 @@ export default function FormulairePage() {
       return;
     }
 
+    // Vérification que le nom du CU1 est renseigné
+    if (!formData.cu1_nom.trim()) {
+      setStatut('erreur');
+      setMessage("Veuillez saisir le nom du cas d'usage 1.");
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     // Vérification que CU1 est renseigné pour les sections obligatoires (A, B, C, E, F)
     const sectionsObligatoires = ['A', 'B', 'C', 'E', 'F'];
     for (const section of SECTIONS) {
@@ -193,7 +201,7 @@ export default function FormulairePage() {
       <p style={{ color: '#555', marginBottom: '24px' }}>
         Ce questionnaire permet de collecter vos retours sur le POC MIA Artemia.
         Les champs marqués <span style={{ color: '#cc0000' }}>*</span> sont obligatoires.
-        Les colonnes CU2 à CU5 sont optionnelles si vous n'avez testé qu'un seul cas d'usage.
+        La colonne CU2 est optionnelle si vous n'avez testé qu'un seul cas d'usage.
       </p>
 
       {statut === 'succes' && <div style={styles.alerteSucces}>{message}</div>}
@@ -234,6 +242,36 @@ export default function FormulairePage() {
                 required
               />
             </div>
+            <div>
+              <label style={styles.labelIdent} htmlFor="cu1_nom">
+                Nom du cas d'usage 1 <span style={styles.asteriqueReq}>*</span>
+              </label>
+              <input
+                id="cu1_nom"
+                type="text"
+                name="cu1_nom"
+                value={formData.cu1_nom}
+                onChange={handleChange}
+                placeholder="Ex : Rédaction de courriers administratifs"
+                style={formData.cu1_nom ? styles.champIdent : styles.champIdentObligatoire}
+                required
+              />
+            </div>
+            <div>
+              <label style={styles.labelIdent} htmlFor="cu2_nom">
+                Nom du cas d'usage 2
+                <span style={{ color: '#888', fontWeight: 400, marginLeft: '6px', fontSize: '0.82rem' }}>(optionnel)</span>
+              </label>
+              <input
+                id="cu2_nom"
+                type="text"
+                name="cu2_nom"
+                value={formData.cu2_nom}
+                onChange={handleChange}
+                placeholder="Ex : Synthèse de documents PDF"
+                style={styles.champIdent}
+              />
+            </div>
           </div>
         </div>
 
@@ -256,12 +294,11 @@ export default function FormulairePage() {
                     <tr>
                       <th style={styles.thCritere}>Critère</th>
                       <th style={styles.thBase}>
-                        CU1 {estObligatoire && <span style={{ color: '#ffcccc' }}>*</span>}
+                        {formData.cu1_nom || 'CU1'} {estObligatoire && <span style={{ color: '#ffcccc' }}>*</span>}
                       </th>
-                      <th style={styles.thBase}>CU2</th>
-                      <th style={styles.thBase}>CU3</th>
-                      <th style={styles.thBase}>CU4</th>
-                      <th style={styles.thBase}>CU5</th>
+                      <th style={styles.thBase}>
+                        {formData.cu2_nom || 'CU2'}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -271,7 +308,7 @@ export default function FormulairePage() {
                           <div style={styles.libelleCritere}>{critere.libelle}</div>
                           <div style={styles.questionCritere}>{critere.question}</div>
                         </td>
-                        {[1, 2, 3, 4, 5].map((cu) => {
+                        {[1, 2].map((cu) => {
                           const champ = `${critere.cle}_cu${cu}`;
                           const obligatoire = estObligatoire && cu === 1;
                           return (

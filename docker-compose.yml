@@ -25,7 +25,10 @@ services:
     environment:
       DATABASE_URL: postgres://artemia:artemia@postgres:5432/artemia
       PORT: 3001
-      ADMIN_TOKEN: changeme
+      # Hash bcrypt du mot de passe DSI — générer via : node backend/scripts/generate-password.js monmotdepasse
+      DSI_PASSWORD_HASH: "$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi"
+      # Clé secrète de signature JWT — remplacer par une valeur aléatoire longue en production
+      JWT_SECRET: changeme-jwt-secret
     ports:
       - "3001:3001"
     depends_on:
