@@ -1,0 +1,17 @@
+{
+  "name": "Rex Artemia",
+  "postStartCommand": "bash start.sh",
+  "forwardPorts": [3000, 3001],
+  "portsAttributes": {
+    "3000": {
+      "label": "Frontend",
+      "onAutoForward": "openBrowser",
+      "visibility": "private"
+    },
+    "3001": {
+      "label": "Backend API",
+      "onAutoForward": "silent",
+      "visibility": "public"
+    }
+  }
+}
